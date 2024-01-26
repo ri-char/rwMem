@@ -1,0 +1,12 @@
+*.cmd
+build/
+*.order
+*.symvers
+*.mod.c
+*.o
+*.mod
+*.ko
+*.usyms
+.vs/
+Debug/
+x64/
