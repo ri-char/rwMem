@@ -527,12 +527,12 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
         attr.bp_len = hwBreakpoint_len;
         attr.bp_type = hwBreakpoint_type;
         attr.disabled = 0;
-        sample_hbp = register_user_hw_breakpoint(&attr, sample_hbp_handler, NULL, task);
+        sample_hbp = perf_event_create_kernel_counter(&attr, -1, task, sample_hbp_handler, NULL);
         put_task_struct(task);
 
         if (IS_ERR((void __force *)sample_hbp)) {
             int ret = PTR_ERR((void __force *)sample_hbp);
-            printk_debug(KERN_INFO "register_user_hw_breakpoint failed: %d\n", ret);
+            printk_debug(KERN_INFO "perf_event_create_kernel_counter failed: %d\n", ret);
             return ret;
         }
 
@@ -578,7 +578,7 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
         printk_debug(KERN_INFO "sample_hbp *:%p\n", sample_hbp);
 
         // 删除硬件断点
-        unregister_hw_breakpoint(sample_hbp);
+        perf_event_release_kernel(sample_hbp);
 
         for (iter = cvector_begin(g_vHwBpHandle); iter != cvector_end(g_vHwBpHandle); iter = cvector_next(g_vHwBpHandle, iter)) {
             // struct perf_event * sample_hbp = (struct perf_event *)*((size_t*)iter);
@@ -652,14 +652,9 @@ static const struct file_operations hwBreakpointProc_fops = {
     .unlocked_ioctl = hwBreakpointProc_ioctl, // 控制函数
 };
 
-void* register_user_hw_breakpoint_fn;
-
 static int __init hwBreakpointProc_dev_init(void) {
     int result;
     int err;
-
-
-	register_user_hw_breakpoint_fn=(void*)kallsyms_lookup_name("register_user_hw_breakpoint");
 
     // 动态申请设备号
     result = alloc_chrdev_region(&g_hwBreakpointProc_devno, 0, 1, DEV_FILENAME);
