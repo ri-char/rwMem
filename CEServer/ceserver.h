@@ -1,9 +1,9 @@
 #ifndef CESERVER_H_
 #define CESERVER_H_
 
+#include "porthelp.h"
 #include <stdint.h>
 #include <sys/types.h>
-#include "porthelp.h"
 
 #define CMD_GETVERSION 0
 #define CMD_CLOSECONNECTION 1
@@ -31,214 +31,238 @@
 #define CMD_MODULE32NEXT 23
 
 #define CMD_GETSYMBOLLISTFROMFILE 24
-#define CMD_LOADEXTENSION         25
+#define CMD_LOADEXTENSION 25
 
-#define CMD_ALLOC                   26
-#define CMD_FREE                    27
-#define CMD_CREATETHREAD            28
-#define CMD_LOADMODULE              29
-#define CMD_SPEEDHACK_SETSPEED      30
+#define CMD_ALLOC 26
+#define CMD_FREE 27
+#define CMD_CREATETHREAD 28
+#define CMD_LOADMODULE 29
+#define CMD_SPEEDHACK_SETSPEED 30
 
-#define CMD_VIRTUALQUERYEXFULL      31
-#define CMD_GETREGIONINFO           32
+#define CMD_VIRTUALQUERYEXFULL 31
+#define CMD_GETREGIONINFO 32
+#define CMD_GETABI 33
+// 4
+#define CMD_SET_CONNECTION_NAME 34
 
-#define CMD_AOBSCAN					200
+#define CMD_CREATETOOLHELP32SNAPSHOTEX 35
 
-//just in case I ever get over 255 commands this value will be reserved for a secondary command list (FF 00 -  FF 01 - ... - FF FE - FF FF 01 - FF FF 02 - .....
-#define CMD_COMMANDLIST2            255
+#define CMD_CHANGEMEMORYPROTECTION 36
 
+#define CMD_GETOPTIONS 37
+#define CMD_GETOPTIONVALUE 38
+#define CMD_SETOPTIONVALUE 39
 
+// when injection won't work but ptrace does:
+#define CMD_PTRACE_MMAP 40
 
+// returns a fake filehandle to be used by CE (handled by the internal handle list)
+#define CMD_OPENNAMEDPIPE 41
+#define CMD_PIPEREAD 42
+#define CMD_PIPEWRITE 43
 
+#define CMD_GETCESERVERPATH 44
+#define CMD_ISANDROID 45
 
-//extern char *versionstring;
+#define CMD_LOADMODULEEX 46
+
+#define CMD_SETCURRENTPATH 47
+#define CMD_GETCURRENTPATH 48
+#define CMD_ENUMFILES 49
+#define CMD_GETFILEPERMISSIONS 50
+#define CMD_SETFILEPERMISSIONS 51
+#define CMD_GETFILE 52
+#define CMD_PUTFILE 53
+#define CMD_CREATEDIR 54
+#define CMD_DELETEFILE 55
+
+#define CMD_AOBSCAN 200
+
+// just in case I ever get over 255 commands this value will be reserved for a secondary command list (FF 00 -  FF 01 - ... - FF FE - FF FF 01 - FF FF 02 - .....
+#define CMD_COMMANDLIST2 255
+
+// extern char *versionstring;
 
 #pragma pack(1)
 struct CeVersion {
-	int version;
-	unsigned char stringsize;
-	//append the versionstring
+    int version;
+    unsigned char stringsize;
+    // append the versionstring
 };
 
 struct CeCreateToolhelp32Snapshot {
-	DWORD dwFlags;
-	DWORD th32ProcessID;
+    DWORD dwFlags;
+    DWORD th32ProcessID;
 };
 
 struct CeProcessEntry {
-	int result;
-	int pid;
-	int processnamesize;
-	//processname
+    int result;
+    int pid;
+    int processnamesize;
+    // processname
 };
 
-struct CeModuleEntry {
-	int result;
-	int64_t modulebase;
-	int modulesize;
-	int modulenamesize;
-	//modulename
+typedef struct {
+    int ReferenceCount;
+    int threadListIterator;
+    int threadCount;
+    int *threadList;
+} ThreadList, *PThreadList;
 
+struct CeModuleEntry {
+    int32_t result;
+    int64_t modulebase;
+    int32_t modulepart;
+    int32_t modulesize;
+    int32_t modulenamesize;
 };
 
 struct CeVirtualQueryExInput {
-	int handle;
-	uint64_t baseaddress;
+    int handle;
+    uint64_t baseaddress;
 };
 
 struct CeVirtualQueryExOutput {
-	uint8_t result;
-	uint32_t protection;
-	uint32_t type;
-	uint64_t baseaddress;
-	uint64_t size;
+    uint8_t result;
+    uint32_t protection;
+    uint32_t type;
+    uint64_t baseaddress;
+    uint64_t size;
 };
 
 struct CeVirtualQueryExFullInput {
-	int handle;
-	uint8_t flags;
+    int handle;
+    uint8_t flags;
 };
 
 struct CeVirtualQueryExFullOutput {
-	uint32_t protection;
-	uint32_t type;
-	uint64_t baseaddress;
-	uint64_t size;
+    uint32_t protection;
+    uint32_t type;
+    uint64_t baseaddress;
+    uint64_t size;
 };
 
 struct CeReadProcessMemoryInput {
-	uint32_t handle;
-	uint64_t address;
-	uint32_t size;
-	uint8_t  compress;
+    uint32_t handle;
+    uint64_t address;
+    uint32_t size;
+    uint8_t compress;
 };
 
 struct CeReadProcessMemoryOutput {
-	int read;
+    int read;
 };
 
 struct CeWriteProcessMemoryInput {
-	int32_t handle;
-	int64_t address;
-	int32_t size;
+    int32_t handle;
+    int64_t address;
+    int32_t size;
 };
-
 
 struct CeWriteProcessMemoryOutput {
-	int32_t written;
+    int32_t written;
 };
-
 
 struct CeSetBreapointInput {
-	HANDLE hProcess;
-	int tid;
-	int debugreg;
-	uint64_t Address;
-	int bptype;
-	int bpsize;
+    HANDLE hProcess;
+    int tid;
+    int debugreg;
+    uint64_t Address;
+    int bptype;
+    int bpsize;
 };
 
-
 struct CeSetBreapointOutput {
-	int result;
+    int result;
 };
 
 struct CeRemoveBreapointInput {
-	HANDLE hProcess;
-	uint32_t tid;
-	uint32_t debugreg;
-	uint32_t wasWatchpoint;
+    HANDLE hProcess;
+    uint32_t tid;
+    uint32_t debugreg;
+    uint32_t wasWatchpoint;
 };
 
-
 struct CeRemoveBreapointOutput {
-	int result;
+    int result;
 };
 
 struct CeSuspendThreadInput {
-	HANDLE hProcess;
-	int tid;
+    HANDLE hProcess;
+    int tid;
 };
 
-
 struct CeSuspendThreadOutput {
-	int result;
+    int result;
 };
 
 struct CeResumeThreadInput {
-	HANDLE hProcess;
-	int tid;
+    HANDLE hProcess;
+    int tid;
 };
 
-
 struct CeResumeThreadOutput {
-	int result;
+    int result;
 };
 
 struct CeAllocInput {
-	HANDLE hProcess;
-	uint64_t preferedBase;
-	uint32_t size;
+    HANDLE hProcess;
+    uint64_t preferedBase;
+    uint32_t size;
+    uint32_t windowsprotection;
 };
 
-
 struct CeAllocOutput {
-	uint64_t address; //0=fail
+    uint64_t address; // 0=fail
 };
 
 struct CeFreeInput {
-	HANDLE hProcess;
-	uint64_t address;
-	uint32_t size;
+    HANDLE hProcess;
+    uint64_t address;
+    uint32_t size;
 };
 
-
 struct CeFreeOutput {
-	uint32_t result;
+    uint32_t result;
 };
 
 struct CeCreateThreadInput {
-	HANDLE hProcess;
-	uint64_t startaddress;
-	uint64_t parameter;
+    HANDLE hProcess;
+    uint64_t startaddress;
+    uint64_t parameter;
 };
 
-
 struct CeCreateThreadOutput {
-	HANDLE threadhandle;
+    HANDLE threadhandle;
 };
 
 struct CeLoadModuleInput {
-	HANDLE hProcess;
-	uint32_t modulepathlength;
-	//modulepath
+    HANDLE hProcess;
+    uint32_t modulepathlength;
+    // modulepath
 };
-
 
 struct CeLoadModuleOutput {
-	uint32_t result;
+    uint32_t result;
 };
-
 
 struct CeSpeedhackSetSpeedInput {
-	HANDLE hProcess;
-	float speed;
+    HANDLE hProcess;
+    float speed;
 };
 
-
 struct CeSpeedhackSetSpeedOutput {
-	uint32_t result;
+    uint32_t result;
 };
 
 struct CeAobScanInput {
-	HANDLE hProcess;
-	uint64_t start;
-	uint64_t end;
-	int inc;
-	int protection;
-	int scansize;
+    HANDLE hProcess;
+    uint64_t start;
+    uint64_t end;
+    int inc;
+    int protection;
+    int scansize;
 };
 #pragma pack()
-
 
 #endif /* CESERVER_H_ */

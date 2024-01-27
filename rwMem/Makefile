@@ -1,9 +1,9 @@
-MODULE_NAME := rwProcMem37
+MODULE_NAME := rwMem
 RESMAN_CORE_OBJS:=sys.o
 RESMAN_GLUE_OBJS:=
 ifneq ($(KERNELRELEASE),)
 	$(MODULE_NAME)-objs:=$(RESMAN_GLUE_OBJS) $(RESMAN_CORE_OBJS)
-	obj-m := rwProcMem37.o
+	obj-m := rwMem.o
 else
 ifeq ($(KDIR),)
 	$(error KDIR is not defined. Please set the KDIR variable.)

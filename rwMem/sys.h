@@ -25,11 +25,9 @@
 
 #define MAJOR_NUM 100
 
-#define IOCTL_OPEN_PROCESS _IOWR(MAJOR_NUM, 1, char *)           // 打开进程
-#define IOCTL_CLOSE_HANDLE _IOWR(MAJOR_NUM, 2, char *)           // 关闭进程
-#define IOCTL_GET_PROCESS_MAPS_COUNT _IOWR(MAJOR_NUM, 3, char *) // 获取进程的内存块地址数量
-#define IOCTL_GET_PROCESS_MAPS_LIST _IOWR(MAJOR_NUM, 4, char *)  // 获取进程的内存块地址列表
-#define IOCTL_CHECK_PROCESS_ADDR_PHY _IOWR(MAJOR_NUM, 5, char *) // 检查进程内存是否有物理内存位置
+#define IOCTL_GET_PROCESS_MAPS_COUNT _IOWR(MAJOR_NUM, 0, char *) // 获取进程的内存块地址数量
+#define IOCTL_GET_PROCESS_MAPS_LIST _IOWR(MAJOR_NUM, 1, char *)  // 获取进程的内存块地址列表
+#define IOCTL_CHECK_PROCESS_ADDR_PHY _IOWR(MAJOR_NUM, 2, char *) // 检查进程内存是否有物理内存位置
 
 struct init_device_info {
     char proc_self_status[4096];
@@ -52,8 +50,6 @@ int rwProcMem_open(struct inode *inode, struct file *filp);
 int rwProcMem_release(struct inode *inode, struct file *filp);
 ssize_t rwProcMem_read(struct file *filp, char __user *buf, size_t size, loff_t *ppos);
 ssize_t rwProcMem_write(struct file *filp, const char __user *buf, size_t size, loff_t *ppos);
-// static long (*unlocked_ioctl) (struct file *, unsigned int, unsigned long);
-// static long (*compat_ioctl) (struct file *, unsigned int cmd, unsigned long arg);
 long rwProcMem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 loff_t rwProcMem_llseek(struct file *filp, loff_t offset, int orig);
 

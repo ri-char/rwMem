@@ -13,10 +13,7 @@
 #include <elf.h>
 #endif
 
-
-
 #include <sys/socket.h>
-
 
 #ifdef __i386__
 typedef struct user_regs_struct CONTEXT_REGS;
@@ -26,21 +23,16 @@ typedef struct user_regs_struct CONTEXT_REGS;
 typedef struct user_regs_struct CONTEXT_REGS;
 #endif
 
-
 #ifdef __arm__
 typedef struct pt_regs CONTEXT_REGS;
 #endif
-
 
 #ifdef __aarch64__
 typedef struct user_pt_regs CONTEXT_REGS;
 #endif
 
 struct CONTEXT {
-	CONTEXT_REGS regs;
+    CONTEXT_REGS regs;
 };
-
-
-
 
 #endif /* CONTEXT_H_ */

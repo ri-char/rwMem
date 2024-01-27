@@ -1,6 +1,6 @@
 ﻿#ifndef VERSION_CONTROL_H_
 #define VERSION_CONTROL_H_
-#define DEV_FILENAME "rwProcMem37" //当前驱动DEV文件名
+#define DEV_FILENAME "rwMem" //当前驱动DEV文件名
 
 //直接调用内核API进行用户层数据交换
 #define CONFIG_DIRECT_API_USER_COPY

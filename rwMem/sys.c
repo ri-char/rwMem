@@ -1,13 +1,12 @@
 ﻿#include "sys.h"
 #include "linux/pid.h"
+#include "linux/printk.h"
 
 int rwProcMem_open(struct inode *inode, struct file *filp) {
-	printk_debug(KERN_INFO "rwProcMem_open!!!!\n");
 	return 0;
 }
 
 int rwProcMem_release(struct inode *inode, struct file *filp) {
-	printk_debug(KERN_INFO "rwProcMem_release!!!!\n");
 	return 0;
 }
 
@@ -16,25 +15,19 @@ ssize_t rwProcMem_read(struct file* filp, char __user* buf, size_t size, loff_t*
 	char data[17] = { 0 };
 	unsigned long read = x_copy_from_user(data, buf, 17);
 	if (read == 0) {
-		struct pid * proc_pid_struct = (struct pid *)*(size_t*)&data;
+		pid_t pid = (pid_t)*(size_t*)&data;
 		size_t proc_virt_addr = *(size_t*)&data[8];
 		bool is_force_read = data[16] == '\x01' ? true : false;
-
 		size_t read_size = 0;
-
-		printk_debug(KERN_INFO "READ proc_pid_struct*:0x%p,size:%ld\n", (void*)proc_pid_struct, sizeof(proc_pid_struct));
-		printk_debug(KERN_INFO "READ proc_virt_addr:0x%zx,size:%ld\n", proc_virt_addr, sizeof(proc_virt_addr));
-
-
-		if (is_force_read == false && !check_proc_map_can_read(proc_pid_struct, proc_virt_addr, size)) {
-			return -EFAULT;
+		struct pid * pid_struct = find_get_pid(pid);
+		if(!pid_struct){
+			return -EINVAL;
 		}
 
-		//if (clear_user(buf, size))
-		//{
-		//	return -EFAULT;
-		//}
-
+		if (is_force_read == false && !check_proc_map_can_read(pid_struct, proc_virt_addr, size)) {
+			put_pid(pid_struct);
+			return -EFAULT;
+		}
 
 		while (read_size < size) {
 			size_t phy_addr = 0;
@@ -57,7 +50,7 @@ ssize_t rwProcMem_read(struct file* filp, char __user* buf, size_t size, loff_t*
 			pte_t *pte;
 
 			bool old_pte_can_read;
-			phy_addr = get_proc_phy_addr(proc_pid_struct, proc_virt_addr + read_size, (pte_t*)&pte);
+			phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr + read_size, (pte_t*)&pte);
 			printk_debug(KERN_INFO "calc phy_addr:0x%zx\n", phy_addr);
 #endif
 			if (phy_addr == 0) {
@@ -92,7 +85,7 @@ ssize_t rwProcMem_read(struct file* filp, char __user* buf, size_t size, loff_t*
 			read_size += pfn_sz;
 		}
 
-
+		put_pid(pid_struct);
 		return read_size;
 	} else {
 		printk_debug(KERN_INFO "READ FAILED ret:%lu, user:%p, size:%zu\n", read, buf, size);
@@ -105,15 +98,17 @@ ssize_t rwProcMem_write(struct file* filp, const char __user* buf, size_t size, 
 	char data[17] = { 0 };
 	unsigned long write = x_copy_from_user(data, buf, 17);
 	if (write == 0) {
-		struct pid * proc_pid_struct = (struct pid *)*(size_t*)data;
+		pid_t pid = (pid_t)*(size_t*)data;
 		size_t proc_virt_addr = *(size_t*)&data[8];
 		bool is_force_write = data[16] == '\x01' ? true : false;
-
 		size_t write_size = 0;
-		printk_debug(KERN_INFO "WRITE proc_pid_struct*:0x%p,size:%ld\n", (void*)proc_pid_struct, sizeof(proc_pid_struct));
-		printk_debug(KERN_INFO "WRITE proc_virt_addr:0x%zx,size:%ld\n", proc_virt_addr, sizeof(proc_virt_addr));
+		struct pid * pid_struct = find_get_pid(pid);
+		if(!pid_struct){
+			return -EINVAL;
+		}
 
-		if (is_force_write == false && !check_proc_map_can_write(proc_pid_struct, proc_virt_addr, size)) {
+		if (is_force_write == false && !check_proc_map_can_write(pid_struct, proc_virt_addr, size)) {
+			put_pid(pid_struct);
 			return -EFAULT;
 		}
 
@@ -135,7 +130,7 @@ ssize_t rwProcMem_write(struct file* filp, const char __user* buf, size_t size, 
 #ifdef CONFIG_USE_PAGE_TABLE_CALC_PHY_ADDR
 			pte_t *pte;
 			bool old_pte_can_write;
-			phy_addr = get_proc_phy_addr(proc_pid_struct, proc_virt_addr + write_size, (pte_t*)&pte);
+			phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr + write_size, (pte_t*)&pte);
 #endif
 
 			printk_debug(KERN_INFO "phy_addr:0x%zx\n", phy_addr);
@@ -170,6 +165,7 @@ ssize_t rwProcMem_write(struct file* filp, const char __user* buf, size_t size, 
 
 			write_size += pfn_sz;
 		}
+		put_pid(pid_struct);
 		return write_size;
 	} else {
 		printk_debug(KERN_INFO "WRITE FAILED ret:%lu, user:%p, size:%zu\n", write, buf, size);
@@ -180,138 +176,92 @@ ssize_t rwProcMem_write(struct file* filp, const char __user* buf, size_t size, 
 
 
 static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
-
 	switch (cmd) {
-	case IOCTL_OPEN_PROCESS:
-	{
-		char buf[8] = { 0 };
-		if (x_copy_from_user((void*)buf, (void*)arg, 8) == 0)
-		{
-			uint64_t pid = *(uint64_t*)&buf;
-			struct pid * proc_pid_struct = NULL;
-
-			printk_debug(KERN_INFO "IOCTL_OPEN_PROCESS\n");
-
-			printk_debug(KERN_INFO "pid:%llu,size:%ld\n", pid, sizeof(pid));
-
-			proc_pid_struct = find_get_pid(pid);
-			printk_debug(KERN_INFO "proc_pid_struct *:0x%p\n", (void*)proc_pid_struct);
-
-			if (!proc_pid_struct) {
-				return -EINVAL;
-			}
-
-			//memcpy(&buf, &proc_pid_struct, sizeof(proc_pid_struct));
-			*(size_t *)&buf[0] = (size_t)proc_pid_struct;
-
-			if (!!x_copy_to_user((void*)arg, (void*)buf, 8))
-			{
-				return -EINVAL;
-			}
-
-			return 0;
-
-		}
-
-		return -EINVAL;
-
-		break;
-	}
-	case IOCTL_CLOSE_HANDLE:
-	{
-		char buf[8] = { 0 };
-		if (x_copy_from_user((void*)buf, (void*)arg, 8) == 0) {
-			struct pid * proc_pid_struct = (struct pid *)*(size_t*)buf;
-			printk_debug(KERN_INFO "IOCTL_CLOSE_HANDLE\n");
-
-			printk_debug(KERN_INFO "proc_pid_struct*:0x%p,size:%ld\n", (void*)proc_pid_struct, sizeof(proc_pid_struct));
-
-			put_pid(proc_pid_struct);
-
-			return 0;
-
-		}
-		return -EFAULT;
-		break;
-	}
 	case IOCTL_GET_PROCESS_MAPS_COUNT:
 	{
-		char buf[8] = { 0 };
-		if (x_copy_from_user((void*)buf, (void*)arg, 8) == 0) {
-			struct pid * proc_pid_struct = (struct pid *)*(size_t*)buf;
-
-			printk_debug(KERN_INFO "IOCTL_GET_PROCESS_MAPS_COUNT\n");
-			printk_debug(KERN_INFO "proc_pid_struct*:0x%p,size:%ld\n", (void*)proc_pid_struct, sizeof(proc_pid_struct));
-
-			return get_proc_map_count(proc_pid_struct);
+		pid_t pid;
+		uint64_t res;
+		struct pid * pid_struct;
+		if (x_copy_from_user((void*)&pid, (void*)arg, 8)) {
+			return -EINVAL;
 		}
-		return -EINVAL;
-		break;
+		pid_struct = find_get_pid(pid);
+		if(!pid_struct){
+			return -EINVAL;
+		}
+		res = get_proc_map_count(pid_struct);
+		put_pid(pid_struct);
+
+		return res;
 	}
 	case IOCTL_GET_PROCESS_MAPS_LIST:
 	{
 		char buf[24];
-		if (x_copy_from_user((void*)buf, (void*)arg, 24) == 0) {
-			struct pid * proc_pid_struct = (struct pid *)*(size_t*)buf;
-			size_t name_len = *(size_t*)&buf[8];
-			size_t buf_size = *(size_t*)&buf[16];
-			int have_pass = 0;
-			int count = 0;
-			unsigned char ch;
-			printk_debug(KERN_INFO "IOCTL_GET_PROCESS_MAPS_LIST\n");
-			printk_debug(KERN_INFO "proc_pid_struct*:0x%p,size:%ld\n", (void*)proc_pid_struct, sizeof(proc_pid_struct));
-			printk_debug(KERN_INFO "name_len:%zu,size:%ld\n", name_len, sizeof(name_len));
-			printk_debug(KERN_INFO "buf_size:%zu,size:%ld\n", buf_size, sizeof(buf_size));
-
-			count = get_proc_maps_list(proc_pid_struct, name_len, (void*)((size_t)arg + (size_t)1), buf_size - 1, false, &have_pass);
-			ch = have_pass == 1 ? '\x01' : '\x00';
-			if (!!x_copy_to_user((void*)arg, &ch, 1)) {
-				return -EFAULT;
-			}
-			return count;
-
-
+		size_t name_len, buf_size;
+		pid_t pid;
+		struct pid * pid_struct;
+		int have_pass = 0;
+		int count = 0;
+		unsigned char res;
+		if (x_copy_from_user((void*)buf, (void*)arg, 24)) {
+			return -EINVAL;
 		}
-		return -EINVAL;
-		break;
+		pid = (pid_t)*(size_t*)buf;
+		name_len = *(size_t*)&buf[8];
+		buf_size = *(size_t*)&buf[16];
+
+		pid_struct = find_get_pid(pid);
+		if(!pid_struct){
+			return -EINVAL;
+		}
+		count = get_proc_maps_list(pid_struct, name_len, (void*)((size_t)arg + (size_t)1), buf_size - 1, false, &have_pass);
+		put_pid(pid_struct);
+		res = have_pass == 1;
+		if (x_copy_to_user((void*)arg, &res, 1)) {
+			return -EFAULT;
+		}
+		return count;
 	}
 	case IOCTL_CHECK_PROCESS_ADDR_PHY:
 	{
 		char buf[16] = { 0 };
-		if (x_copy_from_user((void*)buf, (void*)arg, 16) == 0) {
-			struct pid * proc_pid_struct = (struct pid *)*(size_t*)buf;
-			size_t proc_virt_addr = *(size_t*)&buf[8];
+		pid_t pid;
+		size_t proc_virt_addr;
+		struct pid * pid_struct;
 #ifdef CONFIG_USE_PAGEMAP_FILE_CALC_PHY_ADDR
-			struct file * pFile;
+		struct file * pFile;
 #endif
 
 #ifdef CONFIG_USE_PAGE_TABLE_CALC_PHY_ADDR
-			pte_t *pte;
+		pte_t *pte;
 #endif
-			size_t ret = 0;
-
-			printk_debug(KERN_INFO "IOCTL_CHECK_PROC_ADDR_PHY\n");
-			printk_debug(KERN_INFO "proc_pid_struct *:0x%p,size:%ld\n", (void*)proc_pid_struct, sizeof(proc_pid_struct));
-			printk_debug(KERN_INFO "proc_virt_addr :0x%zx,size:%ld\n", proc_virt_addr, sizeof(proc_virt_addr));
-
-#ifdef CONFIG_USE_PAGEMAP_FILE_CALC_PHY_ADDR
-			pFile = open_pagemap(pid_nr(proc_pid_struct));
-			printk_debug(KERN_INFO "open_pagemap %p\n", pFile);
-			if (!pFile) { break; }
-			ret = get_pagemap_phy_addr(pFile, proc_virt_addr);
-			close_pagemap(pFile);
-#endif
-
-#ifdef CONFIG_USE_PAGE_TABLE_CALC_PHY_ADDR
-			ret = get_proc_phy_addr(proc_pid_struct, proc_virt_addr, (pte_t*)&pte);
-#endif
-
-			if (ret) {
-				return 1;
-			}
-			return 0;
+		size_t ret = 0;
+		if (x_copy_from_user((void*)buf, (void*)arg, 16)) {
+			return -EFAULT;
 		}
-		return -EFAULT;
+		pid = (pid_t)*(size_t*)buf;
+		proc_virt_addr = *(size_t*)&buf[8];
+
+#ifdef CONFIG_USE_PAGEMAP_FILE_CALC_PHY_ADDR
+		pFile = open_pagemap(pid);
+		printk_debug(KERN_INFO "open_pagemap %p\n", pFile);
+		if (!pFile) { return -EINVAL; }
+		ret = get_pagemap_phy_addr(pFile, proc_virt_addr);
+		close_pagemap(pFile);
+#endif
+
+#ifdef CONFIG_USE_PAGE_TABLE_CALC_PHY_ADDR
+		pid_struct = find_get_pid(pid);
+		if(!pid_struct){
+			return -EINVAL;
+		}
+		ret = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t*)&pte);
+		put_pid(pid_struct);
+#endif
+		if (ret) {
+			return 1;
+		}
+		return 0;
 
 		break;
 	}

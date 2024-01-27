@@ -1,5 +1,6 @@
 ﻿#include "api.h"
 #include "ceserver.h"
+#include "porthelp.h"
 #include <cinttypes>
 #include <dirent.h>
 #include <fcntl.h>
@@ -8,7 +9,6 @@
 #include <memory>
 #include <random>
 #include <sstream>
-
 
 CMemoryReaderWriter m_Driver;
 
@@ -61,19 +61,19 @@ BOOL GetProcessListInfo(CMemoryReaderWriter *pDriver, BOOL bGetPhyMemorySize, st
                 pInfo.total_rss = outRss * 4;
                 fclose(stat_file);
             }
-            char cmdline[200] = {0};
-            char cmdline_file_path[200] = {0};
+            char cmdline[500] = {0};
+            char cmdline_file_path[32] = {0};
             sprintf(cmdline_file_path, "/proc/%d/cmdline", pid);
             FILE *cmdline_file = fopen(cmdline_file_path, "r");
             size_t read = fread(cmdline, 1, sizeof(cmdline), cmdline_file);
             if (read > 1) {
-                for (int i = 0; i < read - 1; i++) {
+                for (int i = 0; i < read; i++) {
                     if (cmdline[i] == '\0')
                         cmdline[i] = ' ';
                 }
             }
             fclose(cmdline_file);
-            pInfo.cmdline = cmdline;
+            pInfo.cmdline = std::string(cmdline, read);
             vOutput.push_back(pInfo);
         }
         closedir(dir);
@@ -111,7 +111,7 @@ HANDLE CApi::CreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID) {
         std::vector<DRIVER_REGION_INFO> vMaps;
         BOOL bOutListCompleted;
         BOOL b = m_Driver.VirtualQueryExFull(u64DriverProcessHandle, FALSE, vMaps, bOutListCompleted);
-        printf("调用驱动 VirtualQueryExFull(显示全部内存) 返回值:%d\n", b);
+        // printf("调用驱动 VirtualQueryExFull(显示全部内存) 返回值:%d\n", b);
 
         if (!vMaps.size()) {
             printf("VirtualQueryExFull 失败\n");
@@ -187,6 +187,43 @@ HANDLE CApi::CreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID) {
 
         pCeModuleList->readIter = pCeModuleList->vModuleList.begin();
         return CPortHelper::CreateHandleFromPointer((uint64_t)pCeModuleList, htTHSModule);
+    } else if (dwFlags & TH32CS_SNAPTHREAD) {
+        int max = 64;
+        char _taskdir[255];
+        DIR *taskdir;
+
+        if (th32ProcessID == 0)
+            return 0; // not handled (unlike the windows TH32CS_SNAPTHREAD, this only gets the threads of the provided processid)
+
+        sprintf(_taskdir, "/proc/%d/task", th32ProcessID);
+
+        taskdir = opendir(_taskdir);
+        if (taskdir) {
+            struct dirent *d;
+            PThreadList tl = (PThreadList)malloc(sizeof(ThreadList));
+
+            tl->ReferenceCount = 1;
+            tl->threadCount = 0;
+            tl->threadList = (int *)malloc(max * sizeof(int));
+
+            d = readdir(taskdir);
+            while (d) {
+                int tid = atoi(d->d_name);
+
+                if (tid) {
+                    tl->threadList[tl->threadCount] = tid;
+                    tl->threadCount++;
+                    if (tl->threadCount >= max) {
+                        max = max * 2;
+                        tl->threadList = (int *)realloc(tl->threadList, max * sizeof(int));
+                    }
+                }
+                d = readdir(taskdir);
+            }
+            closedir(taskdir);
+
+            return CPortHelper::CreateHandleFromPointer((uint64_t)tl, htTHSThread);
+        }
     }
 
     return 0;
@@ -242,7 +279,6 @@ BOOL CApi::Module32First(HANDLE hSnapshot, ModuleListEntry &moduleentry) {
 
 BOOL CApi::Module32Next(HANDLE hSnapshot, ModuleListEntry &moduleentry) {
     // get the current iterator of the list and increase it. If the max has been reached, return false
-    printf("Module32First/Next(%d)\n", hSnapshot);
     if (CPortHelper::GetHandleType(hSnapshot) == htTHSModule) {
         CeModuleList *pCeModuleList = (CeModuleList *)CPortHelper::GetPointerFromHandle(hSnapshot);
         pCeModuleList->readIter++;
@@ -282,8 +318,6 @@ void CApi::CloseHandle(HANDLE h) {
     handleType ht = CPortHelper::GetHandleType(h);
     uint64_t pl = CPortHelper::GetPointerFromHandle(h);
 
-    printf("CloseHandle %d %" PRIu64 "\n", h, pl);
-
     if (ht == htTHSModule) {
         auto pCeModuleList = (CeModuleList *)pl;
         delete pCeModuleList;
@@ -292,9 +326,12 @@ void CApi::CloseHandle(HANDLE h) {
         delete pProcessList;
     } else if (ht == htProcesHandle) {
         auto pOpenProcess = (CeOpenProcess *)pl;
-
         m_Driver.CloseHandle(pOpenProcess->u64DriverProcessHandle);
         delete pOpenProcess;
+    } else if (ht == htTHSThread) {
+        auto pThreadList = (PThreadList)pl;
+        free(pThreadList->threadList);
+        free(pThreadList);
     }
     // else
     //{
