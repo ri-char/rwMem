@@ -1,9 +1,9 @@
-MODULE_NAME := hwBreakpointProc1
+MODULE_NAME := hwBreakpoint
 RESMAN_CORE_OBJS:=sys.o
 RESMAN_GLUE_OBJS:=cvector.o
 ifneq ($(KERNELRELEASE),)    
 	$(MODULE_NAME)-objs:=$(RESMAN_GLUE_OBJS) $(RESMAN_CORE_OBJS)
-	obj-m := hwBreakpointProc1.o
+	obj-m := hwBreakpoint.o
 else
 ifeq ($(KDIR),)
 	$(error KDIR is not defined. Please set the KDIR variable.)

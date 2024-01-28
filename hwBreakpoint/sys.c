@@ -1,5 +1,6 @@
 #include "cvector.h"
 #include "linux/hw_breakpoint.h"
+#include "linux/kern_levels.h"
 #include "linux/pid.h"
 #include "ver_control.h"
 #include <asm/io.h>
@@ -26,8 +27,6 @@
 //////////////////////////////////////////////////////////////////
 
 #define MAJOR_NUM 100
-#define IOCTL_OPEN_PROCESS _IOR(MAJOR_NUM, 1, char *)            // 打开进程
-#define IOCTL_CLOSE_HANDLE _IOR(MAJOR_NUM, 2, char *)            // 关闭进程
 #define IOCTL_GET_NUM_BRPS _IOR(MAJOR_NUM, 3, char *)            // 获取CPU支持硬件执行断点的数量
 #define IOCTL_GET_NUM_WRPS _IOR(MAJOR_NUM, 4, char *)            // 获取CPU支持硬件访问断点的数量
 #define IOCTL_SET_HWBP_HIT_CONDITIONS _IOR(MAJOR_NUM, 5, char *) // 设置硬件断点命中记录条件
@@ -80,8 +79,6 @@ struct HIT_CONDITIONS {
 static struct HIT_CONDITIONS g_hwBpHitConditions = {0};
 
 static int hwBreakpointProc_open(struct inode *inode, struct file *filp) {
-    // 将设备结构体指针赋值给文件私有数据指针
-    filp->private_data = g_hwBreakpointProc_devp;
     return 0;
 }
 
@@ -110,8 +107,6 @@ static ssize_t hwBreakpointProc_read(struct file *filp, char __user *buf, size_t
         输出：
         sizeof(USER_HIT_INFO) * n
     */
-
-    // struct hwBreakpointProcDev* devp = filp->private_data; //获得设备结构体指针
 
     // 获取硬件断点句柄
     char tem[8];
@@ -228,13 +223,11 @@ static loff_t hwBreakpointProc_llseek(struct file *filp, loff_t offset, int orig
  * Handle hitting a HW-breakpoint.
  */
 static void sample_hbp_handler(struct perf_event *bp, struct perf_sample_data *data, struct pt_regs *regs) {
-    // printk_debug(KERN_INFO "hw_breakpoint HIT!!!!! %p %d\n", regs->pc, bp->id);
     size_t now_hit_addr = regs->pc;
 
     int exist_hbp = 0;
     citerator iter;
     int i = 0;
-
     // 判断是否启用了条件断点
     for (i = 0; i < 31; i++) {
         if (g_hwBpHitConditions.enable_regs[i]) {
@@ -280,7 +273,6 @@ static void sample_hbp_handler(struct perf_event *bp, struct perf_sample_data *d
             exist_hbp = 1;
             exist_hit = 0;
 
-            // printk_debug(KERN_INFO "hwbpInfo->sample_hbp==bp\n");
             for (child = cvector_begin(hwbpInfo->vHit); child != cvector_end(hwbpInfo->vHit); child = cvector_next(hwbpInfo->vHit, child)) {
                 struct HIT_INFO *hitInfo = (struct HIT_INFO *)child;
                 if (hitInfo->hit_addr == now_hit_addr) {
@@ -293,6 +285,7 @@ static void sample_hbp_handler(struct perf_event *bp, struct perf_sample_data *d
                 struct HIT_INFO hitInfo;
                 memset(&hitInfo, 0, sizeof(hitInfo));
                 hitInfo.hit_addr = now_hit_addr;
+                hitInfo.hit_count = 1;
                 memcpy(&hitInfo.regs, regs, sizeof(hitInfo.regs));
                 cvector_pushback(hwbpInfo->vHit, &hitInfo);
             }
@@ -308,103 +301,18 @@ static void sample_hbp_handler(struct perf_event *bp, struct perf_sample_data *d
         hwbpInfo.vHit = cvector_create(sizeof(struct HIT_INFO));
 
         hitInfo.hit_addr = now_hit_addr;
+        hitInfo.hit_count = 1;
         memcpy(&hitInfo.regs, regs, sizeof(hitInfo.regs));
-        // printk_debug(KERN_INFO "new hit_addr %p\n", now_hit_addr);
         cvector_pushback(hwbpInfo.vHit, &hitInfo);
 
         cvector_pushback(g_vHwBpInfo, &hwbpInfo);
     }
     up(&g_lockHwBpInfoSem);
+    perf_event_disable(bp);
 }
 
-// long (*unlocked_ioctl) (struct file *, unsigned int, unsigned long);
-// long (*compat_ioctl) (struct file *, unsigned int cmd, unsigned long arg)
 static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
-    // struct inode *inode = filp->f_dentry->d_inode;
-    // struct inode *inode = filp->d_inode;
-    struct inode *inode = inode = filp->f_inode;
-
-    // struct hwBreakpointProcDev* devp = filp->private_data; //获得设备结构体指针
-
     switch (cmd) {
-    case IOCTL_OPEN_PROCESS: // 打开进程
-    {
-        /*
-        驱动通信协议：
-
-            输入：
-            0-7字节：进程PID
-
-            输出：
-            ioctl的返回值为0则表示打开进程成功
-
-            0-7字节：进程句柄
-        */
-
-        char buf[8];
-        int64_t pid = 0;
-        struct pid *proc_pid_struct = NULL;
-        printk_debug(KERN_INFO "IOCTL_OPEN_PROCESS\n");
-
-        memset(&buf, 0, sizeof(buf));
-        // 用户空间->内核空间
-        if (copy_from_user((void *)buf, (void *)arg, 8)) {
-            return -EINVAL;
-        }
-        // 获取进程PID
-        memcpy(&pid, buf, sizeof(pid));
-        printk_debug(KERN_INFO "pid:%ld\n", pid);
-
-        // 输出进程句柄
-        proc_pid_struct = find_get_pid(pid);
-        printk_debug(KERN_INFO "proc_pid_struct *:%ld\n", proc_pid_struct);
-
-        if (!proc_pid_struct) {
-            return -EINVAL;
-        }
-
-        memset(&buf, 0, sizeof(buf));
-        memcpy(&buf, &proc_pid_struct, sizeof(proc_pid_struct));
-
-        // 内核空间->用户空间交换数据
-        if (copy_to_user((void *)arg, &buf, 8)) {
-            return -EINVAL;
-        }
-
-        return 0;
-        break;
-    }
-    case IOCTL_CLOSE_HANDLE: // 关闭进程
-    {
-        /*
-        驱动通信协议：
-
-            输入：
-            0-7字节：进程句柄
-
-            输出：
-            ioctl的返回值为0则表示关闭进程成功
-        */
-
-        // 获取进程句柄
-        char buf[8];
-        struct pid *proc_pid_struct = NULL;
-
-        printk_debug(KERN_INFO "IOCTL_CLOSE_HANDLE\n");
-
-        memset(&buf, 0, sizeof(buf));
-        // 用户空间->内核空间
-        if (copy_from_user((void *)buf, (void *)arg, 8)) {
-            return -EFAULT;
-        }
-        // 关闭进程句柄
-        memcpy(&proc_pid_struct, buf, sizeof(proc_pid_struct));
-        printk_debug(KERN_INFO "proc_pid_struct *:%ld\n", proc_pid_struct);
-        put_pid(proc_pid_struct);
-
-        return 0;
-        break;
-    }
     case IOCTL_GET_NUM_BRPS: // 获取CPU支持硬件执行断点的数量
     {
         /*
@@ -433,7 +341,7 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
         return ((read_cpuid(ID_AA64DFR0_EL1) >> 20) & 0xf) + 1;
         break;
     }
-    case IOCTL_SET_HWBP_HIT_CONDITIONS: // 获取CPU支持硬件访问断点的数量
+    case IOCTL_SET_HWBP_HIT_CONDITIONS: // 设置硬件断点条件
     {
         /*
         驱动通信协议：
@@ -446,17 +354,14 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
         */
 
         // 获取硬件断点句柄
-        char buf[sizeof(struct HIT_CONDITIONS)] = {0};
-
-        printk_debug(KERN_INFO "IOCTL_SET_HWBP_HIT_CONDITIONS\n");
+        struct HIT_CONDITIONS buf;
 
         // 用户空间->内核空间
-        if (copy_from_user((void *)buf, (void *)arg, sizeof(struct HIT_CONDITIONS))) {
+        if (copy_from_user((void *)&buf, (void *)arg, sizeof(buf))) {
             return -EFAULT;
         }
         memcpy(&g_hwBpHitConditions, &buf, sizeof(g_hwBpHitConditions));
         return 0;
-        break;
     }
     case IOCTL_ADD_PROCESS_HWBP: // 设置进程硬件断点
     {
@@ -467,7 +372,7 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
             0-7字节：进程句柄
             8-15字节：进程内存地址
             16-23字节：硬件断点长度
-            24-27字节：硬件断点类型
+            24-32字节：硬件断点类型
 
             输出：
             ioctl的返回值为0则表示设置进程硬件断点成功
@@ -476,71 +381,52 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
         */
 
         // 获取进程句柄
-        char buf[28];
+        // char buf[28];
+        struct {
+            pid_t pid;
+            size_t proc_virt_addr;
+            size_t hwBreakpoint_len;
+            size_t hwBreakpoint_type;
+        } buf;
         struct pid *proc_pid_struct = NULL;
-        size_t proc_virt_addr = 0;
         size_t hwBreakpoint_len = 4;
-        unsigned int hwBreakpoint_type = 0;
         struct task_struct *task;
         struct perf_event_attr attr;
         struct perf_event *sample_hbp;
 
-        printk_debug(KERN_INFO "IOCTL_ADD_PROCESS_BP\n");
-        memset(&buf, 0, sizeof(buf));
         // 用户空间->内核空间
-        if (copy_from_user((void *)buf, (void *)arg, 28)) {
+        if (copy_from_user((void *)&buf, (void *)arg, sizeof(buf))) {
             return -EFAULT;
         }
-        // 获取进程句柄
-        memcpy(&proc_pid_struct, buf, sizeof(proc_pid_struct));
-        printk_debug(KERN_INFO "proc_pid_struct *:%p\n", proc_pid_struct);
-
-        // 获取进程虚拟地址
-        memcpy(&proc_virt_addr, (void *)((size_t)buf + (size_t)8), sizeof(proc_virt_addr));
-        printk_debug(KERN_INFO "proc_virt_addr :%p\n", proc_virt_addr);
-
-        // 获取硬件断点长度
-        memcpy(&hwBreakpoint_len, (void *)((size_t)buf + (size_t)16), sizeof(hwBreakpoint_len));
-        printk_debug(KERN_INFO "hwBreakpoint_len:%zu\n", hwBreakpoint_len);
-
-        // 获取硬件断点类型
-        memcpy(&hwBreakpoint_type, (void *)((size_t)buf + (size_t)24), sizeof(hwBreakpoint_type));
-        printk_debug(KERN_INFO "hwBreakpoint_type:%d\n", hwBreakpoint_type);
-
+        proc_pid_struct = find_get_pid(buf.pid);
+        if(!proc_pid_struct){
+            return -EINVAL;
+        }
         task = get_pid_task(proc_pid_struct, PIDTYPE_PID);
         if (!task) {
-            printk_debug(KERN_INFO "get_pid_task failed.\n");
+            put_pid(proc_pid_struct);
             return -EINVAL;
         }
 
-        // hw_breakpoint_init(&attr);
         ptrace_breakpoint_init(&attr);
 
-        /*
-         * Initialise fields to sane defaults
-         * (i.e. values that will pass validation).
-
-         */
-        attr.bp_addr = proc_virt_addr;
+        attr.bp_addr = buf.proc_virt_addr;
         attr.bp_len = hwBreakpoint_len;
-        attr.bp_type = hwBreakpoint_type;
+        attr.bp_type = buf.hwBreakpoint_type;
         attr.disabled = 0;
         sample_hbp = perf_event_create_kernel_counter(&attr, -1, task, sample_hbp_handler, NULL);
         put_task_struct(task);
+        put_pid(proc_pid_struct);
 
         if (IS_ERR((void __force *)sample_hbp)) {
             int ret = PTR_ERR((void __force *)sample_hbp);
-            printk_debug(KERN_INFO "perf_event_create_kernel_counter failed: %d\n", ret);
+            printk(KERN_ERR "perf_event_create_kernel_counter failed: %d\n", ret);
             return ret;
         }
 
         cvector_pushback(g_vHwBpHandle, &sample_hbp);
 
-        // 输出硬件断点句柄
-        memset(&buf, 0, sizeof(buf));
-        memcpy(&buf, &sample_hbp, sizeof(sample_hbp));
-        // 内核空间->用户空间交换数据
-        if (copy_to_user((void *)arg, &buf, 8)) {
+        if (copy_to_user((void *)arg, &sample_hbp, sizeof(sample_hbp))) {
             return -EINVAL;
         }
         return 0;
@@ -560,33 +446,22 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
         */
 
         // 获取硬件断点句柄
-        char buf[8];
         struct perf_event *sample_hbp = NULL;
         citerator iter;
 
-        printk_debug(KERN_INFO "IOCTL_DEL_PROCESS_HWBP\n");
-
-        memset(&buf, 0, sizeof(buf));
         // 用户空间->内核空间
-        if (copy_from_user((void *)buf, (void *)arg, 8)) {
+        if (copy_from_user((void *)&sample_hbp, (void *)arg, sizeof(sample_hbp))) {
             return -EFAULT;
         }
-        // 获取硬件断点句柄
-        memcpy(&sample_hbp, buf, sizeof(sample_hbp));
-        printk_debug(KERN_INFO "sample_hbp *:%p\n", sample_hbp);
 
         // 删除硬件断点
         perf_event_release_kernel(sample_hbp);
 
         for (iter = cvector_begin(g_vHwBpHandle); iter != cvector_end(g_vHwBpHandle); iter = cvector_next(g_vHwBpHandle, iter)) {
-            // struct perf_event * sample_hbp = (struct perf_event *)*((size_t*)iter);
             cvector_rm(g_vHwBpHandle, iter);
-
-            printk_debug(KERN_INFO "cvector_rm ok\n");
             break;
         }
         return 0;
-        break;
     }
     case IOCTL_GET_HWBP_HIT_ADDR_COUNT: // 获取硬件断点命中地址数量
     {
@@ -601,21 +476,16 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
         */
 
         // 获取硬件断点句柄
-        char buf[8];
         struct perf_event *sample_hbp = NULL;
         size_t count = 0;
         citerator iter;
 
         printk_debug(KERN_INFO "IOCTL_GET_HWBP_HIT_ADDR_COUNT\n");
 
-        memset(&buf, 0, sizeof(buf));
         // 用户空间->内核空间
-        if (copy_from_user((void *)buf, (void *)arg, 8)) {
+        if (copy_from_user((void *)&sample_hbp, (void *)arg, sizeof(sample_hbp))) {
             return -EFAULT;
         }
-        // 获取硬件断点句柄
-        memcpy(&sample_hbp, buf, sizeof(sample_hbp));
-        printk_debug(KERN_INFO "sample_hbp *:%p\n", sample_hbp);
 
         for (iter = cvector_begin(g_vHwBpInfo); iter != cvector_end(g_vHwBpInfo); iter = cvector_next(g_vHwBpInfo, iter)) {
             struct HW_BREAKPOINT_INFO *hwbpInfo = (struct HW_BREAKPOINT_INFO *)iter;
@@ -627,7 +497,6 @@ static long hwBreakpointProc_ioctl(struct file *filp, unsigned int cmd, unsigned
         }
         printk_debug(KERN_INFO "hit_count:%zu\n", count);
         return count;
-        break;
     }
     default:
         return -EINVAL;

@@ -1,7 +1,7 @@
 #ifndef VER_CONTROL_H_
 #define VER_CONTROL_H_
 #include <linux/version.h>
-#define DEV_FILENAME "hwBreakpointProc1" //当前驱动DEV文件名
+#define DEV_FILENAME "hwBreakpoint" //当前驱动DEV文件名
 
 
 //是否打印内核调试日志

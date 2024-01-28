@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-#include "porthelp.h"
-#include "Global.h"
 
 
 #define CMD_GETVERSION 0
