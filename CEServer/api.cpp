@@ -111,10 +111,9 @@ HANDLE CApi::CreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID) {
         std::vector<DRIVER_REGION_INFO> vMaps;
         BOOL bOutListCompleted;
         BOOL b = m_Driver.VirtualQueryExFull(u64DriverProcessHandle, FALSE, vMaps, bOutListCompleted);
-        // printf("调用驱动 VirtualQueryExFull(显示全部内存) 返回值:%d\n", b);
 
         if (!vMaps.size()) {
-            printf("VirtualQueryExFull 失败\n");
+            printf("VirtualQueryExFull failed\n");
             fflush(stdout);
             return 0;
         }
@@ -451,12 +450,11 @@ int CApi::VirtualQueryEx(HANDLE hProcess, uint64_t lpAddress, RegionInfo &rinfo,
         pCeOpenProcess->vLastMaps.clear();
         BOOL bOutListCompleted;
         BOOL b = m_Driver.VirtualQueryExFull(u64DriverProcessHandle, TRUE, pCeOpenProcess->vLastMaps, bOutListCompleted);
-        printf("调用驱动 VirtualQueryExFull(只显示在物理内存中的内存) 返回值:%d\n", b);
         fflush(stdout);
 
         if (!pCeOpenProcess->vLastMaps.size()) {
             pCeOpenProcess->nLastGetMapsTime = 0;
-            printf("VirtualQueryExFull 失败\n");
+            printf("VirtualQueryExFull failed\n");
             fflush(stdout);
             return 0;
         } else {

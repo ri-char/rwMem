@@ -20,7 +20,6 @@ static __always_inline unsigned long x_copy_to_user(void __user *to, const void 
 #ifdef CONFIG_DIRECT_API_USER_COPY
     unsigned long __arch_copy_to_user(void __user *to, const void *from, unsigned long n);
     return __arch_copy_to_user(to, from, n);
-    return copy_to_user(to, from, n);
 #else
     return copy_to_user(to, from, n);
 #endif

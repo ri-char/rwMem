@@ -1,10 +1,11 @@
 ﻿#ifndef MEMORY_READER_WRITER_H_
 #define MEMORY_READER_WRITER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <mutex>
 #include <vector>
-
 
 #include "IMemReaderWriterProxy.h"
 #include <errno.h>
@@ -17,7 +18,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
 
 // 默认驱动文件名
 #define RWPROCMEM_FILE_NODE "/dev/rwMem"
@@ -104,13 +104,8 @@ class CMemoryReaderWriter {
         return _rwProcMemDriver_VirtualQueryExFull(m_nDriverLink, hProcess, showPhy, vOutput, &bOutListCompleted);
     }
 
-    // 驱动_检查进程内存地址是否存在（驱动连接句柄，进程句柄，进程内存地址），返回值：TRUE存在，FALSE不存在
-    BOOL CheckMemAddrIsValid(uint64_t hProcess, uint64_t lpBaseAddress) { return _rwProcMemDriver_CheckMemAddrIsValid(m_nDriverLink, hProcess, lpBaseAddress); }
-
     // 获取驱动连接FD，返回值：驱动连接的FD
-    int GetLinkFD() {
-        return m_nDriverLink;
-    }
+    int GetLinkFD() { return m_nDriverLink; }
 
     // 设置驱动连接FD
     void SetLinkFD(int fd) { m_nDriverLink = fd; }
@@ -359,29 +354,29 @@ class CMemoryReaderWriter {
             return FALSE;
         }
 
-        uint64_t big_buf_len = (1 + 8 + 8 + 4 + 4096) * (count + 50);
-        char *big_buf = (char *)calloc(count + 50, 1 + 8 + 8 + 4 + 4096);
+        uint64_t big_buf_len = 8 + (8 + 8 + 4 + 512) * (count + 50);
+        char *big_buf = (char *)calloc(1, big_buf_len);
         *(uint64_t *)&big_buf[0] = hProcess;
 
-        uint64_t name_len = 4096;
+        uint64_t name_len = 512;
         *(uint64_t *)&big_buf[8] = name_len;
         *(uint64_t *)&big_buf[16] = big_buf_len;
 
-        int res = _rwProcMemDriver_MyIoctl(nDriverLink, IOCTL_GET_PROCESS_MAPS_LIST, (unsigned long)big_buf, big_buf_len);
-        TRACE("VirtualQueryExFull res %d\n", res);
-        if (res <= 0) {
+        int unfinish = _rwProcMemDriver_MyIoctl(nDriverLink, IOCTL_GET_PROCESS_MAPS_LIST, (unsigned long)big_buf, big_buf_len);
+        TRACE("VirtualQueryExFull unfinish %d\n", unfinish);
+        if (unfinish < 0) {
             TRACE("VirtualQueryExFull ioctl():%s\n", strerror(errno));
             free(big_buf);
             return FALSE;
         }
         size_t copy_pos = (size_t)big_buf;
-        unsigned char pass = *(unsigned char *)big_buf;
-        if (pass == '\x01') {
+        uint64_t res = *(uint64_t *)big_buf;
+        if (unfinish) {
             // 数据不完整
             if (bOutListCompleted) {
                 *bOutListCompleted = FALSE;
             }
-            TRACE("VirtualQueryExFull pass %x\n", pass);
+            TRACE("VirtualQueryExFull pass %lx\n", res);
 
             // free(big_buf);
             // return FALSE;
@@ -391,12 +386,12 @@ class CMemoryReaderWriter {
                 *bOutListCompleted = TRUE;
             }
         }
-        copy_pos++;
+        copy_pos += 8;
         for (; res > 0; res--) {
             uint64_t vma_start = 0;
             uint64_t vma_end = 0;
             char vma_flags[4] = {0};
-            char name[4096] = {0};
+            char name[512] = {0};
 
             vma_start = *(uint64_t *)copy_pos;
             copy_pos += 8;
@@ -404,9 +399,9 @@ class CMemoryReaderWriter {
             copy_pos += 8;
             memcpy(&vma_flags, (void *)copy_pos, 4);
             copy_pos += 4;
-            memcpy(&name, (void *)copy_pos, 4096);
+            memcpy(&name, (void *)copy_pos, 512);
             name[sizeof(name) - 1] = '\0';
-            copy_pos += 4096;
+            copy_pos += 512;
 
             DRIVER_REGION_INFO rInfo = {0};
             rInfo.baseaddress = vma_start;
@@ -433,7 +428,7 @@ class CMemoryReaderWriter {
             } else {
                 rInfo.type = MEM_PRIVATE;
             }
-            memcpy(&rInfo.name, &name, 4096);
+            memcpy(&rInfo.name, &name, 512);
             rInfo.name[sizeof(rInfo.name) - 1] = '\0';
             if (showPhy) {
                 // 只显示在物理内存中的内存
@@ -441,8 +436,10 @@ class CMemoryReaderWriter {
 
                 uint64_t addr;
                 int isPhyRegion = 0;
-                for (addr = vma_start; addr < vma_end; addr += getpagesize()) {
-                    if (_rwProcMemDriver_CheckMemAddrIsValid(nDriverLink, hProcess, addr)) {
+                char *isphy = _rwProcMemDriver_CheckMemAddrIsValid(nDriverLink, hProcess, vma_start, vma_end);
+                int i;
+                for (addr = vma_start, i = 0; addr < vma_end; addr += getpagesize(), i++) {
+                    if (isphy[i / 8] & ((char)1 << (i % 8))) {
                         if (isPhyRegion == 0) {
                             isPhyRegion = 1;
                             rPhyInfo.baseaddress = addr;
@@ -465,6 +462,7 @@ class CMemoryReaderWriter {
                     rPhyInfo.size = vma_end - rPhyInfo.baseaddress;
                     vOutput.push_back(rPhyInfo);
                 }
+                delete[] isphy;
 
             } else {
                 // 显示全部内存
@@ -473,57 +471,28 @@ class CMemoryReaderWriter {
         }
         free(big_buf);
 
-        return (pass == '\x01') ? FALSE : TRUE;
+        return !unfinish;
     }
 
-    BOOL _rwProcMemDriver_CheckMemAddrIsValid(int nDriverLink, uint64_t hProcess, uint64_t lpBaseAddress) {
+    char *_rwProcMemDriver_CheckMemAddrIsValid(int nDriverLink, uint64_t hProcess, uint64_t BeginAddress, uint64_t EndAddress) {
         if (nDriverLink < 0) {
             return FALSE;
         }
         if (!hProcess) {
             return FALSE;
         }
-        char ptr_buf[16] = {0};
+        size_t bufSize = std::max<int>(24, ((EndAddress/getpagesize()) - (BeginAddress/getpagesize()) + 7) / 8);
+        char *ptr_buf = new char[bufSize];
         *(uint64_t *)&ptr_buf[0] = hProcess;
-        *(uint64_t *)&ptr_buf[8] = lpBaseAddress;
-        int r=_rwProcMemDriver_MyIoctl(nDriverLink, IOCTL_CHECK_PROCESS_ADDR_PHY, (unsigned long)&ptr_buf, sizeof(ptr_buf));
-        if ( r == 1) {
-            return TRUE;
+        *(uint64_t *)&ptr_buf[8] = BeginAddress;
+        *(uint64_t *)&ptr_buf[16] = EndAddress;
+        printf("check phy %lx %lx %lx\n", hProcess, BeginAddress, EndAddress);
+        int r = _rwProcMemDriver_MyIoctl(nDriverLink, IOCTL_CHECK_PROCESS_ADDR_PHY, (unsigned long)ptr_buf, bufSize);
+        printf("check phy %d\n", r);
+        if (r > 0) {
+            return ptr_buf;
         }
-        return FALSE;
-    }
-
-    std::string _GetFileContent(const char *lpszFilePath) {
-        std::ifstream inFile(lpszFilePath);
-        if (!inFile.is_open()) {
-            return {};
-        }
-        const int size = 4096;
-        char szBuf[size] = {0};
-        std::shared_ptr<unsigned char> spBuf(new unsigned char[size], std::default_delete<unsigned char[]>());
-        if (!spBuf) {
-            inFile.close();
-            return {};
-        }
-        inFile.read((char *)spBuf.get(), size);
-        inFile.close();
-        std::string strFileContent = (char *)spBuf.get();
-        return strFileContent;
-    }
-
-    int _GetFileLineCount(const char *lpszFilePath) {
-        std::ifstream inFile(lpszFilePath);
-        if (!inFile.is_open()) {
-            return 0;
-        }
-
-        int cnt = 0;
-        std::string line;
-        while (getline(inFile, line)) { // line中不包括每行的换行符
-            cnt++;
-        }
-        inFile.close();
-        return cnt;
+        return nullptr;
     }
 
   private:

@@ -19,7 +19,6 @@ enum {
 	HW_BREAKPOINT_X = 4,
 	HW_BREAKPOINT_INVALID = HW_BREAKPOINT_RW | HW_BREAKPOINT_X,
 };
-#pragma pack(1)
 struct my_user_pt_regs {
 	uint64_t regs[31];
 	uint64_t sp;
@@ -29,9 +28,9 @@ struct my_user_pt_regs {
 	uint64_t syscallno;
 };
 struct USER_HIT_INFO {
-	size_t hit_addr; //ÃüÖÐµØÖ·
-	size_t hit_count; //ÃüÖÐ´ÎÊý
-	struct my_user_pt_regs regs; //×îºóÒ»´ÎÃüÖÐµÄ¼Ä´æÆ÷Êý¾Ý
+	size_t hit_addr; //ï¿½ï¿½ï¿½Ðµï¿½Ö·
+	size_t hit_count; //ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½
+	struct my_user_pt_regs regs; //ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ÐµÄ¼Ä´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 };
 struct HIT_CONDITIONS {
 	char enable_regs[31];
@@ -42,7 +41,6 @@ struct HIT_CONDITIONS {
 	char enable_syscallno;
 	struct my_user_pt_regs regs;
 };
-#pragma pack()
 
 class CNetworkManager {
 public:

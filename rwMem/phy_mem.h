@@ -9,14 +9,6 @@
 #include <linux/fs.h>
 #include <linux/pid.h>
 
-
-#ifdef CONFIG_USE_PAGEMAP_FILE_CALC_PHY_ADDR
-static inline struct file *open_pagemap(int pid);
-static size_t get_pagemap_phy_addr(struct file *lpPagemap, size_t virt_addr);
-static inline void close_pagemap(struct file *lpPagemap);
-#endif
-
-#ifdef CONFIG_USE_PAGE_TABLE_CALC_PHY_ADDR
 static inline int is_pte_can_read(pte_t *pte);
 static inline int is_pte_can_write(pte_t *pte);
 static inline int is_pte_can_exec(pte_t *pte);
@@ -28,7 +20,6 @@ static inline size_t get_task_proc_phy_addr(struct task_struct *task, size_t vir
 static inline size_t get_proc_phy_addr(struct pid *proc_pid_struct, size_t virt_addr, pte_t *out_pte);
 static inline size_t read_ram_physical_addr(size_t phy_addr, char *lpBuf, bool is_kernel_buf, size_t read_size);
 static inline size_t write_ram_physical_addr(size_t phy_addr, char *lpBuf, bool is_kernel_buf, size_t write_size);
-#endif
 
 // 实现
 //////////////////////////////////////////////////////////////////////////
@@ -47,99 +38,6 @@ static inline size_t write_ram_physical_addr(size_t phy_addr, char *lpBuf, bool 
     *size_t_ptr___out_ret = size_t___value;                                                                                                                                        \
     break;
 
-#ifdef CONFIG_USE_PAGEMAP_FILE_CALC_PHY_ADDR
-#define PAGEMAP_ENTRY sizeof(uint64_t)
-#define GET_BIT(X, Y) (X & ((uint64_t)1 << Y)) >> Y
-#define GET_PFN(X) X & 0x7FFFFFFFFFFFFF
-const int __endian_bit = 1;
-#define is_bigendian() ((*(char *)&__endian_bit) == 0)
-///////////////////////////////////////////////////////////////////
-static inline struct file *open_pagemap(int pid) {
-    struct file *filp = NULL;
-
-    char szFilePath[256] = {0};
-    if (pid == -1) {
-        strcpy(szFilePath, "/proc/self/pagemap");
-    } else {
-        snprintf(szFilePath, sizeof(szFilePath), "/proc/%d/pagemap", pid);
-    }
-
-    filp = filp_open(szFilePath, O_RDONLY, 0);
-    if (IS_ERR(filp)) {
-        return NULL;
-    }
-    return filp;
-}
-
-static size_t get_pagemap_phy_addr(struct file *lpPagemap, size_t virt_addr) {
-
-    uint64_t page_size = PAGE_SIZE;
-    uint64_t file_offset;
-    mm_segment_t pold_fs;
-    uint64_t read_val;
-    unsigned char c_buf[PAGEMAP_ENTRY];
-    int i;
-    unsigned char c;
-    printk_debug(KERN_INFO "page_size %zu\n", page_size);
-    printk_debug(KERN_INFO "Big endian? %d\n", is_bigendian());
-
-    // Shifting by virt-addr-offset number of bytes
-    // and multiplying by the size of an address (the size of an entry in pagemap file)
-    file_offset = virt_addr / page_size * PAGEMAP_ENTRY;
-
-    printk_debug(KERN_INFO "Vaddr: 0x%llx, Page_size: %zu, Entry_size: %d\n", virt_addr, page_size, PAGEMAP_ENTRY);
-
-    printk_debug(KERN_INFO "Reading at 0x%llx\n", file_offset);
-
-    pold_fs = get_fs();
-    set_fs(KERNEL_DS);
-    if (lpPagemap->f_op->llseek(lpPagemap, file_offset, SEEK_SET) == -1) {
-        printk_debug(KERN_INFO "Failed to do llseek!");
-        set_fs(pold_fs);
-        return 0;
-    }
-
-    read_val = 0;
-
-    if (lpPagemap->f_op->read(lpPagemap, c_buf, PAGEMAP_ENTRY, &lpPagemap->f_pos) != PAGEMAP_ENTRY) {
-        printk_debug(KERN_INFO "Failed to do read!");
-        set_fs(pold_fs);
-        return 0;
-    }
-    set_fs(pold_fs);
-
-    if (!is_bigendian()) {
-        for (i = 0; i < PAGEMAP_ENTRY / 2; i++) {
-            c = c_buf[PAGEMAP_ENTRY - i - 1];
-            c_buf[PAGEMAP_ENTRY - i - 1] = c_buf[i];
-            c_buf[i] = c;
-        }
-    }
-
-    for (i = 0; i < PAGEMAP_ENTRY; i++) {
-        printk_debug(KERN_INFO "[%d]0x%x ", i, c_buf[i]);
-
-        read_val = (read_val << 8) + c_buf[i];
-    }
-    printk_debug(KERN_INFO "\n");
-    printk_debug(KERN_INFO "Result: 0x%llx\n", read_val);
-
-    if (GET_BIT(read_val, 63)) {
-        uint64_t pfn = GET_PFN(read_val);
-        printk_debug(KERN_INFO "PFN: 0x%llx (0x%llx)\n", pfn, pfn * page_size + virt_addr % page_size);
-        return pfn * page_size + virt_addr % page_size;
-    } else {
-        printk_debug(KERN_INFO "Page not present\n");
-    }
-    if (GET_BIT(read_val, 62)) {
-        printk_debug(KERN_INFO "Page swapped\n");
-    }
-    return 0;
-}
-static inline void close_pagemap(struct file *lpPagemap) { filp_close(lpPagemap, NULL); }
-#endif
-
-#ifdef CONFIG_USE_PAGE_TABLE_CALC_PHY_ADDR
 #include <asm/pgtable.h>
 
 static inline size_t get_task_proc_phy_addr(struct task_struct *task, size_t virt_addr, pte_t *out_pte) {
@@ -318,8 +216,6 @@ static inline int change_pte_exec_status(pte_t *pte, bool can_exec) {
     }
     return 1;
 }
-
-#endif
 
 static inline unsigned long size_inside_page(unsigned long start, unsigned long size) {
     unsigned long sz;

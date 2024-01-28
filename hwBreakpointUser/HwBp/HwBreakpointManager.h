@@ -42,7 +42,6 @@ enum {
 	HW_BREAKPOINT_X = 4,
 	HW_BREAKPOINT_INVALID = HW_BREAKPOINT_RW | HW_BREAKPOINT_X,
 };
-#pragma pack(1)
 struct my_user_pt_regs {
 	uint64_t regs[31];
 	uint64_t sp;
@@ -66,7 +65,6 @@ struct HIT_CONDITIONS {
 	char enable_syscallno;
 	struct my_user_pt_regs regs;
 };
-#pragma pack()
 
 #define MAJOR_NUM 100
 #define IOCTL_OPEN_PROCESS 							_IOR(MAJOR_NUM, 1, char*) //打开进程

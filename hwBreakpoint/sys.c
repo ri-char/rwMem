@@ -62,7 +62,6 @@ struct HW_BREAKPOINT_INFO {
 static cvector g_vHwBpInfo;
 static struct semaphore g_lockHwBpInfoSem;
 
-#pragma pack(1)
 struct HIT_CONDITIONS {
     char enable_regs[31];
     char enable_sp;
@@ -77,7 +76,6 @@ struct HIT_CONDITIONS {
     uint64_t orig_x0;
     uint64_t syscallno;
 };
-#pragma pack()
 // 全局硬件断点命中记录条件
 static struct HIT_CONDITIONS g_hwBpHitConditions = {0};
 
