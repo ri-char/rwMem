@@ -11,5 +11,5 @@ endif
 all:
 	make -C $(KDIR) M=$(PWD) ARCH=arm64 SUBARCH=arm64 modules
 clean:
-	rm -f build
+	rm -f *.ko *.o *.mod.o *.mod.c *.symvers .*.cmd
 endif

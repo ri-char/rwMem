@@ -371,21 +371,7 @@ class CMemoryReaderWriter {
         }
         size_t copy_pos = (size_t)big_buf;
         uint64_t res = *(uint64_t *)big_buf;
-        if (unfinish) {
-            // 数据不完整
-            if (bOutListCompleted) {
-                *bOutListCompleted = FALSE;
-            }
-            TRACE("VirtualQueryExFull pass %lx\n", res);
-
-            // free(big_buf);
-            // return FALSE;
-        } else {
-            // 数据完整
-            if (bOutListCompleted) {
-                *bOutListCompleted = TRUE;
-            }
-        }
+        *bOutListCompleted = unfinish;
         copy_pos += 8;
         for (; res > 0; res--) {
             uint64_t vma_start = 0;
@@ -437,6 +423,9 @@ class CMemoryReaderWriter {
                 uint64_t addr;
                 int isPhyRegion = 0;
                 char *isphy = _rwProcMemDriver_CheckMemAddrIsValid(nDriverLink, hProcess, vma_start, vma_end);
+                if(!isphy) {
+                    continue;
+                }
                 int i;
                 for (addr = vma_start, i = 0; addr < vma_end; addr += getpagesize(), i++) {
                     if (isphy[i / 8] & ((char)1 << (i % 8))) {
@@ -486,9 +475,7 @@ class CMemoryReaderWriter {
         *(uint64_t *)&ptr_buf[0] = hProcess;
         *(uint64_t *)&ptr_buf[8] = BeginAddress;
         *(uint64_t *)&ptr_buf[16] = EndAddress;
-        printf("check phy %lx %lx %lx\n", hProcess, BeginAddress, EndAddress);
         int r = _rwProcMemDriver_MyIoctl(nDriverLink, IOCTL_CHECK_PROCESS_ADDR_PHY, (unsigned long)ptr_buf, bufSize);
-        printf("check phy %d\n", r);
         if (r > 0) {
             return ptr_buf;
         }

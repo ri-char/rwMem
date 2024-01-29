@@ -2,6 +2,7 @@
 #include "linux/kern_levels.h"
 #include "linux/pid.h"
 #include "linux/printk.h"
+#include "linux/types.h"
 
 int rwProcMem_open(struct inode *inode, struct file *filp) { return 0; }
 
@@ -187,7 +188,7 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
         struct task_struct *task;
         pte_t *pte;
         size_t ret = 0;
-		size_t pages;
+        size_t pages, bufLen, i;
         uint8_t *retBuf;
         if (x_copy_from_user((void *)&param, (void *)arg, sizeof(param))) {
             return -EFAULT;
@@ -208,27 +209,43 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
             put_pid(pid_struct);
             return -EINVAL;
         }
+
+#define MAX_MALLOC_SIZE 1024
+
         pages = (param.virt_addr_end - param.virt_addr_start) / PAGE_SIZE;
-        retBuf = kmalloc((pages + 7) / 8, GFP_KERNEL);
-		if(!retBuf) {
-			put_pid(pid_struct);
-			return -ENOMEM;
-		}
-		memset(retBuf, 0, (pages + 7) / 8);
-        for (proc_virt_addr = param.virt_addr_start; proc_virt_addr < param.virt_addr_end; proc_virt_addr += PAGE_SIZE) {
+        bufLen = (pages + 7) / 8;
+        bufLen = bufLen > MAX_MALLOC_SIZE ? MAX_MALLOC_SIZE : bufLen;
+        retBuf = kmalloc(bufLen, GFP_KERNEL);
+        if (!retBuf) {
+            put_pid(pid_struct);
+            return -ENOMEM;
+        }
+        memset(retBuf, 0, bufLen);
+
+        for (proc_virt_addr = param.virt_addr_start, i = 0; proc_virt_addr < param.virt_addr_end; proc_virt_addr += PAGE_SIZE) {
             ret = get_task_proc_phy_addr(task, proc_virt_addr, (pte_t *)&pte);
             if (ret && is_pte_can_read(pte)) {
-				retBuf[(proc_virt_addr - param.virt_addr_start) / PAGE_SIZE / 8] |= 1 << ((proc_virt_addr - param.virt_addr_start) / PAGE_SIZE % 8);
+                retBuf[i / 8] |= 1 << (i % 8);
+            }
+            i++;
+            if (i == MAX_MALLOC_SIZE * 8) {
+                if (x_copy_to_user((void *)arg, retBuf, bufLen)) {
+                    kfree(retBuf);
+                    put_pid(pid_struct);
+                    return -EFAULT;
+                }
+                i = 0;
+                memset(retBuf, 0, bufLen);
+                arg += MAX_MALLOC_SIZE;
             }
         }
         put_pid(pid_struct);
-
-        if (x_copy_to_user((void *)arg, retBuf, (pages + 7) / 8)) {
+        if (i && x_copy_to_user((void *)arg, retBuf, (i + 7) / 8)) {
             kfree(retBuf);
             return -EFAULT;
         }
         kfree(retBuf);
-		return pages;
+        return pages;
     }
     default:
         return -EINVAL;
