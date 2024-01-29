@@ -19,6 +19,8 @@ make CC=clang LLVM=1 KDIR=<android-kernel>/out/android13-5.15/common
 
 ### CEServer
 
+The CEServer is a modified version of the official CEServer. It support the **master** branch of Cheat Engine.
+
 ```bash
 aarch64-linux-gnu-g++ *.cpp -lz -o CEServer
 ```

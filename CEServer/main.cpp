@@ -25,7 +25,7 @@
 
 #define PORT 3168
 
-char versionstring[] = "CHEATENGINE Network 2.2";
+char versionstring[] = "CHEATENGINE Network 2.3";
 ssize_t recvall(int s, void *buf, size_t size, int flags) {
     ssize_t totalreceived = 0;
     ssize_t sizeleft = size;
@@ -98,7 +98,7 @@ int DispatchCommand(int currentsocket, unsigned char command) {
         int versionsize = strlen(versionstring);
         v = (CeVersion *)malloc(sizeof(CeVersion) + versionsize);
         v->stringsize = versionsize;
-        v->version = 5;
+        v->version = 6;
 
         memcpy((char *)v + sizeof(CeVersion), versionstring, versionsize);
 
@@ -292,6 +292,7 @@ int DispatchCommand(int currentsocket, unsigned char command) {
                 r->modulebase = me.baseAddress;
                 r->modulesize = me.moduleSize;
                 r->modulenamesize = me.moduleName.length();
+                r->modulefileoffset = 0;
                 r->modulepart = 0;
                 // printf("%s\n", me.moduleName.c_str());
 
@@ -303,6 +304,7 @@ int DispatchCommand(int currentsocket, unsigned char command) {
                 r->modulebase = 0;
                 r->modulesize = 0;
                 r->modulenamesize = 0;
+                r->modulefileoffset = 0;
                 r->modulepart = 0;
             }
 
@@ -712,6 +714,7 @@ int DispatchCommand(int currentsocket, unsigned char command) {
                         m->modulebase = me.baseAddress;
                         m->modulesize = me.moduleSize;
                         m->modulenamesize = namelen;
+                        m->modulefileoffset = 0;
                         m->modulepart = 0;
                         m->result = 1;
 
