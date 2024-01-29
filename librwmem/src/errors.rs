@@ -4,8 +4,10 @@ use thiserror::Error;
 pub enum Error {
     #[error("IO error: {0}")]
     Errno(#[from] nix::errno::Errno),
-    #[error("read too small: expect read {0} bytes, but read {1} bytes")]
-    ReadTooSmall(usize, usize),
+    #[error("read too short: expect read {0} bytes, but short {1} bytes")]
+    ReadFailed(usize, usize),
+    #[error("write too short: expect write {0} bytes, but short {1} bytes")]
+    WriteFailed(usize, usize),
     #[error("maps too long")]
     MapsTooLong,
     #[error("maps parse error: {0}")]

@@ -61,7 +61,7 @@ impl Device {
                 )
             })?;
             if real_read != buf.len() as isize {
-                return Err(errors::Error::ReadTooSmall(buf.len(), real_read as usize));
+                return Err(errors::Error::ReadFailed(buf.len(), real_read as usize));
             }
             buf.copy_from_slice(&new_buf[..buf.len()]);
         } else {
@@ -72,7 +72,7 @@ impl Device {
                 libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
             })?;
             if real_read != buf.len() as isize {
-                return Err(errors::Error::ReadTooSmall(buf.len(), real_read as usize));
+                return Err(errors::Error::ReadFailed(buf.len(), real_read as usize));
             }
         }
         Ok(())
@@ -89,7 +89,7 @@ impl Device {
             libc::write(self.fd, new_buf.as_ptr() as *const libc::c_void, buf.len())
         })?;
         if real_write != buf.len() as isize {
-            return Err(errors::Error::ReadTooSmall(buf.len(), real_write as usize));
+            return Err(errors::Error::WriteFailed(buf.len(), real_write as usize));
         }
         Ok(())
     }

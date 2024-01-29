@@ -11,3 +11,4 @@ build/
 Debug/
 x64/
 target/
+.cache/
