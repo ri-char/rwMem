@@ -1,0 +1,15 @@
+[package]
+name = "rwmemctl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = {version = "^4", features = ["derive"]}
+anyhow = "1"
+shellish_parse = "2.2"
+clap-num = "^1.1"
+pretty-hex = "0.4"
+hex = "*"
+tokio = { version = "1", features = ["rt", "net"] }
+librwmem = { path = "../librwmem", features = ["async"]}
+

@@ -1,0 +1,28 @@
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index 7cc581e0e..78b0accf1 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -1096,20 +1096,23 @@ __is_default_overflow_handler(perf_overflow_handler_t overflow_handler)
+ 		return true;
+ 	return false;
+ }
+ 
+ #define is_default_overflow_handler(event) \
+ 	__is_default_overflow_handler((event)->overflow_handler)
+ 
+ #ifdef CONFIG_BPF_SYSCALL
+ static inline bool uses_default_overflow_handler(struct perf_event *event)
+ {
++	if(unlikely(((uint64_t)(event->overflow_handler_context) >> 56) == 0xcb)){
++		return true;
++	}
+ 	if (likely(is_default_overflow_handler(event)))
+ 		return true;
+ 
+ 	return __is_default_overflow_handler(event->orig_overflow_handler);
+ }
+ #else
+ #define uses_default_overflow_handler(event) \
+ 	is_default_overflow_handler(event)
+ #endif
+ 

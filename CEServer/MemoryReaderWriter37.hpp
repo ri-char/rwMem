@@ -345,9 +345,7 @@ class CMemoryReaderWriter {
         if (!hProcess) {
             return FALSE;
         }
-        char buf[8] = {0};
-        *(uint64_t *)&buf[0] = hProcess;
-        int count = _rwProcMemDriver_MyIoctl(nDriverLink, IOCTL_GET_PROCESS_MAPS_COUNT, (unsigned long)&buf, sizeof(buf));
+        int count = _rwProcMemDriver_MyIoctl(nDriverLink, IOCTL_GET_PROCESS_MAPS_COUNT, (unsigned long)hProcess, sizeof(hProcess));
         TRACE("VirtualQueryExFull count %d\n", count);
         if (count <= 0) {
             TRACE("VirtualQueryExFull ioctl():%s\n", strerror(errno));

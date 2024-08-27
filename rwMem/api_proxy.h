@@ -1,4 +1,4 @@
-﻿#ifndef API_PROXY_H_
+#ifndef API_PROXY_H_
 #define API_PROXY_H_
 // clang-format off
 #include <linux/mm_types.h>

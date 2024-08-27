@@ -1,4 +1,4 @@
-﻿#ifndef PROC_MAPS_H_
+#ifndef PROC_MAPS_H_
 #define PROC_MAPS_H_
 
 #include "linux/mm.h"

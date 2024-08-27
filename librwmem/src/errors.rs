@@ -16,4 +16,8 @@ pub enum Error {
     NotAligned,
     #[error("begin address {0} is larger than end address {1}")]
     BeginLargerThanEnd(u64, u64),
+    #[error("invalid register: {0}")]
+    InvalidRegister(u64),
+    #[error("invalid breakpoint type: {0}")]
+    InvalidBreakpointType(String),
 }

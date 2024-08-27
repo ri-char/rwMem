@@ -12,3 +12,4 @@ Debug/
 x64/
 target/
 .cache/
+compile_commands.json
